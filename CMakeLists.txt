@@ -37,6 +37,7 @@ include_directories( ${OpenCV_INCLUDE_DIRS} )
 find_package(octomap REQUIRED)
 include_directories(${OCTOMAP_INCLUDE_DIRS})
 
+include_directories(include)
 
 add_executable(pcl_to_map src/pcl_to_map.cpp)
 target_link_libraries(pcl_to_map ${PCL_LIBRARIES} Eigen3::Eigen ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES})

@@ -21,6 +21,8 @@
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
+#include "halodi_ros2_pcl_tools/string_tools.hpp"
+
 using namespace pcl;
 using namespace Eigen;
 
@@ -28,6 +30,15 @@ using namespace Eigen;
 #define FREE_CELL_VALUE 0
 #define OCCUPIED_PIXEL_VALUE 0
 #define FREE_PIXEL_VALUE 255
+
+Quaterniond from_euler(const double x, const double y, const double z)
+{
+    AngleAxisd xaa(x, Vector3d::UnitX());
+    AngleAxisd yaa(y, Vector3d::UnitY());
+    AngleAxisd zaa(z, Vector3d::UnitZ());
+
+    return xaa * yaa * zaa;
+}
 
 class PclToMap : public rclcpp::Node
 {
@@ -63,7 +74,7 @@ class PclToMap : public rclcpp::Node
             voxelgrid_filter_->setMinimumPointsNumberPerVoxel(declare_parameter<int>("voxel_min_points", 1));
 
             cumulative_transform_.setIdentity();
-            update(Affine3d::Identity());
+            update(transform_from_param());
         }
 
         bool cloud_loaded()
@@ -81,12 +92,8 @@ class PclToMap : public rclcpp::Node
 
         void r_cb(const geometry_msgs::msg::Vector3::SharedPtr msg)
         {
-            AngleAxisd xaa(msg->x, Vector3d::UnitX());
-            AngleAxisd yaa(msg->y, Vector3d::UnitY());
-            AngleAxisd zaa(msg->z, Vector3d::UnitZ());
-
             Affine3d transform = Affine3d::Identity();
-            transform.rotate(xaa * yaa * zaa);
+            transform.rotate(from_euler(msg->x, msg->y, msg->z));
             update(transform);
         }
 
@@ -209,10 +216,13 @@ class PclToMap : public rclcpp::Node
             og_msg_ptr_->data.resize(og_msg_ptr_->info.width  * og_msg_ptr_->info.height);
             std::fill(og_msg_ptr_->data.begin(), og_msg_ptr_->data.end(), FREE_CELL_VALUE);
             for(const auto& pt : *cloud_downsample) {
-                int r = std::round((pt.x - og_msg_ptr_->info.origin.position.x) / og_msg_ptr_->info.resolution),
-                    c = std::round((pt.y - og_msg_ptr_->info.origin.position.y) / og_msg_ptr_->info.resolution),
-                    i = c * og_msg_ptr_->info.width + r;
-                og_msg_ptr_->data[i] = OCCUPIED_CELL_VALUE;
+                uint32_t r = std::round((pt.x - og_msg_ptr_->info.origin.position.x) / og_msg_ptr_->info.resolution),
+                    c = std::round((pt.y - og_msg_ptr_->info.origin.position.y) / og_msg_ptr_->info.resolution);
+
+                if((r < og_msg_ptr_->info.width) && (c < og_msg_ptr_->info.height)) {
+                    uint32_t i = c * og_msg_ptr_->info.width + r;
+                    og_msg_ptr_->data[i] = OCCUPIED_CELL_VALUE;
+                }
             }
 
             // publish
@@ -226,6 +236,31 @@ class PclToMap : public rclcpp::Node
 
             // update cumulative transform
             cumulative_transform_ = transform * cumulative_transform_;
+        }
+
+        Affine3d transform_from_param()
+        {
+            Affine3d transform = Affine3d::Identity();
+
+            auto initial_transform = declare_parameter<std::string>("transform", "");
+            auto doubles = split_string_to_doubles(initial_transform, ',');
+
+            switch(doubles.size()) {
+                case 6:
+                    transform.translate(Vector3d(doubles[0], doubles[1], doubles[2]));
+                    transform.rotate(from_euler(doubles[3], doubles[4], doubles[5]));
+                    break;
+                case 7:
+                    transform.translate(Vector3d(doubles[0], doubles[1], doubles[2]));
+                    transform.rotate(Quaterniond(doubles[6], doubles[3], doubles[4], doubles[5]));
+                    break;
+                default:
+                    std::string err = "Invalid transform parameter: " + initial_transform;
+                    RCLCPP_ERROR(get_logger(), err.c_str());
+                    break;
+            }
+
+            return transform;
         }
 
         rclcpp::Subscription<geometry_msgs::msg::Vector3>::SharedPtr t_sub_, r_sub_;
