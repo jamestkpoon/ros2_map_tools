@@ -164,8 +164,7 @@ class PclToMap : public rclcpp::Node
                     if(OBJReader().read(fp, *mesh) == 0) {
                         fromPCLPointCloud2(mesh->cloud, *cloud_ptr_);
                     }
-                }
-                else if(cloud_in_ext_ == ".ot") {
+                } else if(cloud_in_ext_ == ".ot") {
                     octomap::OcTree tree(fp);
                     for(auto it=tree.begin_leafs(), end=tree.end_leafs(); it!= end; ++it) {
                         if(it->getOccupancy() >= prob_thresh) {
@@ -173,6 +172,9 @@ class PclToMap : public rclcpp::Node
                             cloud_ptr_->push_back(PointXYZ(center.x(), center.y(), center.z()));
                         }
                     }
+                } else {
+                    std::string err = "Unrecognized extension: " + cloud_in_ext_;
+                    RCLCPP_ERROR(get_logger(), err.c_str());
                 }
 
                 if(cloud_loaded()) {
