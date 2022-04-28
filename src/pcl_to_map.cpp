@@ -245,21 +245,22 @@ class PclToMap : public rclcpp::Node
             Affine3d transform = Affine3d::Identity();
 
             auto initial_transform = declare_parameter<std::string>("transform", "");
-            auto doubles = split_string_to_doubles(initial_transform, ',');
-
-            switch(doubles.size()) {
-                case 6:
-                    transform.translate(Vector3d(doubles[0], doubles[1], doubles[2]));
-                    transform.rotate(from_euler(doubles[3], doubles[4], doubles[5]));
-                    break;
-                case 7:
-                    transform.translate(Vector3d(doubles[0], doubles[1], doubles[2]));
-                    transform.rotate(Quaterniond(doubles[6], doubles[3], doubles[4], doubles[5]));
-                    break;
-                default:
-                    std::string err = "Invalid transform parameter: " + initial_transform;
-                    RCLCPP_ERROR(get_logger(), err.c_str());
-                    break;
+            if(initial_transform != "") {
+                auto doubles = split_string_to_doubles(initial_transform, ',');
+                switch(doubles.size()) {
+                    case 6:
+                        transform.translate(Vector3d(doubles[0], doubles[1], doubles[2]));
+                        transform.rotate(from_euler(doubles[3], doubles[4], doubles[5]));
+                        break;
+                    case 7:
+                        transform.translate(Vector3d(doubles[0], doubles[1], doubles[2]));
+                        transform.rotate(Quaterniond(doubles[6], doubles[3], doubles[4], doubles[5]));
+                        break;
+                    default:
+                        std::string err = "Invalid transform parameter: " + initial_transform;
+                        RCLCPP_ERROR(get_logger(), err.c_str());
+                        break;
+                }
             }
 
             return transform;
