@@ -3,9 +3,9 @@
 
 #include <pcl/io/pcd_io.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <pcl/common/transforms.h>
 #include <pcl/filters/voxel_grid.h>
-#include <Eigen/Dense>
+#include <octomap/octomap.h>
+#include <octomap/OcTree.h>
 
 #include <rclcpp/rclcpp.hpp>
 #include <tf2/buffer_core.h>
@@ -16,16 +16,15 @@
 #include <std_srvs/srv/trigger.hpp>
 
 using namespace pcl;
-using namespace Eigen;
 
 #define AUTHORITY "default_authority"
 #define TARGET_FRAME_OVERRIDE "target_frame"
 #define SOURCE_FRAME_OVERRIDE "source_frame"
 
-struct CloudXYZPtrStamped
+struct OctocloudStamped
 {
     tf2::TimePoint stamp;
-    PointCloud<PointXYZ>::Ptr cloud;
+    std::shared_ptr<octomap::Pointcloud> cloud;
 };
 
 
@@ -84,21 +83,18 @@ class DenseMapBuilder : public rclcpp::Node
                         poses_->push_back(from_tum(line));
                     }
                 }
+                file.close();
+
+                std::cout << "Loaded " << poses_->size() << " poses" << std::endl;
             }
 
-            clouds_ = new std::vector<CloudXYZPtrStamped>();
+            clouds_ = new std::vector<OctocloudStamped>();
             cloud_throttle_period_ns_ = 1e9 / declare_parameter<double>("cloud_hz", -1.0);
 
-            float voxel_size = declare_parameter<double>("voxel_size", -1.0);
-            if(voxel_size > 0.0) {
-                voxelgrid_filter_ = new VoxelGrid<PointXYZ>();
-                voxelgrid_filter_->setLeafSize (voxel_size, voxel_size, voxel_size);
-                voxelgrid_filter_->setMinimumPointsNumberPerVoxel(declare_parameter<int>("voxel_min_points", 1));
-                downsample_local_clouds_ = declare_parameter<bool>("downsample_local_clouds", true);
-            } else {
-                voxelgrid_filter_ = nullptr;
-                downsample_local_clouds_ = false;
-            }
+            float voxel_size = declare_parameter<double>("voxel_size", 0.05);
+            voxelgrid_filter_ = new VoxelGrid<PointXYZ>();
+            voxelgrid_filter_->setLeafSize (voxel_size, voxel_size, voxel_size);
+            voxelgrid_filter_->setMinimumPointsNumberPerVoxel(declare_parameter<int>("voxel_min_points", 1));
 
             odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
                 "odom", 10, std::bind(&DenseMapBuilder::odom_callback, this, std::placeholders::_1));
@@ -137,17 +133,21 @@ class DenseMapBuilder : public rclcpp::Node
 
         void cache_cloud(const sensor_msgs::msg::PointCloud2& msg)
         {
-            CloudXYZPtrStamped cs;
+            OctocloudStamped cs;
             cs.stamp = tf2_ros::fromMsg(msg.header.stamp);
-            cs.cloud = PointCloud<PointXYZ>::Ptr(new PointCloud<PointXYZ>);
-            PCLPointCloud2 pcl_pc2; pcl_conversions::toPCL(msg, pcl_pc2);
-            fromPCLPointCloud2(pcl_pc2, *cs.cloud);
 
-            if(downsample_local_clouds_) {
-                voxelgrid_filter_->setInputCloud (cs.cloud);
-                PointCloud<PointXYZ>::Ptr cloud_downsample(new PointCloud<PointXYZ>);
-                voxelgrid_filter_->filter (*cloud_downsample);
-                cs.cloud = cloud_downsample;
+            // downsample
+            PCLPointCloud2 pcl_pc2; pcl_conversions::toPCL(msg, pcl_pc2);
+            PointCloud<PointXYZ>::Ptr cloud(new PointCloud<PointXYZ>);
+            fromPCLPointCloud2(pcl_pc2, *cloud);
+            voxelgrid_filter_->setInputCloud (cloud);
+            PointCloud<PointXYZ>::Ptr cloud_downsample(new PointCloud<PointXYZ>);
+            voxelgrid_filter_->filter (*cloud_downsample);
+
+            // octotree pointcloud
+            cs.cloud = std::shared_ptr<octomap::Pointcloud>(new octomap::Pointcloud);
+            for(const auto& pt : *cloud_downsample) {
+                cs.cloud->push_back(octomap::point3d(pt.x, pt.y, pt.z));
             }
 
             clouds_->push_back(cs);
@@ -176,44 +176,41 @@ class DenseMapBuilder : public rclcpp::Node
             }
             poses_->clear();
 
-            // aggregate clouds
-            PointCloud<PointXYZ>::Ptr cloud_agg(new PointCloud<PointXYZ>);
-            int num_ok_clouds = 0, num_clouds = clouds_->size();
-            for(auto& cs : *clouds_) {
+            // populate octomap tree
+            std::cout << "Populating tree ..." << std::endl;
+            octomap::OcTree tree(voxelgrid_filter_->getLeafSize().x());
+            int num_clouds = clouds_->size(), num_clouds_ok = 0, num_clouds_attempted = 0;
+            for(const auto& cs : *clouds_) {
+                ++num_clouds_attempted;
                 if(buffercore.canTransform(TARGET_FRAME_OVERRIDE, SOURCE_FRAME_OVERRIDE, cs.stamp)) {
-                    // apply affine transform
-                    Affine3d transform = Affine3d::Identity();
+                    ++num_clouds_ok;
                     auto tf = buffercore.lookupTransform(TARGET_FRAME_OVERRIDE, SOURCE_FRAME_OVERRIDE, cs.stamp).transform;
-                    transform.translate(Vector3d(tf.translation.x, tf.translation.y, tf.translation.z));
-                    transform.rotate(Quaterniond(tf.rotation.w, tf.rotation.x, tf.rotation.y, tf.rotation.z));
-                    PointCloud<PointXYZ>::Ptr transformed_cloud (new PointCloud<PointXYZ> ());
-                    transformPointCloud (*cs.cloud, *transformed_cloud, transform);
+                    octomap::pose6d pose(octomath::Vector3(tf.translation.x, tf.translation.y, tf.translation.z),
+                        octomath::Quaternion(tf.rotation.w, tf.rotation.x, tf.rotation.y, tf.rotation.z));
 
-                    // append points to aggregate cloud, increment counter
-                    *cloud_agg += *transformed_cloud;
-                    ++num_ok_clouds;
+                    tree.insertPointCloud(*cs.cloud, octomap::point3d(0,0,0), pose);
+
+                    std::cout << "  " << num_clouds_attempted << " / " << num_clouds << std::endl;
+
+                    if(!rclcpp::ok()) {
+                        res->message = "Abort";
+                        res->success = false;
+                        return;
+                    }
                 }
-
-                cs.cloud->clear(); // free up a bit of memory during aggregation
             }
             clouds_->clear();
+            std::cout << "Tree populated" << std::endl;
 
             // save
-            if(!cloud_agg->empty()) {
-                auto fp = declare_parameter<std::string>("cloud", "cloud") + ".pcd";
-                if(voxelgrid_filter_) {
-                    voxelgrid_filter_->setInputCloud (cloud_agg);
-                    PointCloud<PointXYZ>::Ptr cloud_downsample(new PointCloud<PointXYZ>);
-                    voxelgrid_filter_->filter (*cloud_downsample);
-                    cloud_agg = cloud_downsample;
-                }
-                io::savePCDFile(fp, *cloud_agg);
+            if(tree.size() > 1) {
+                tree.writeBinary(declare_parameter<std::string>("tree", "tree") + ".ot");
 
-                res->message = std::to_string(cloud_agg->size()) + " points from "
-                    + std::to_string(num_ok_clouds) + "/" + std::to_string(num_clouds) + " clouds";
+                res->message = std::to_string(tree.getNumLeafNodes()) + " leaf nodes from "
+                    + std::to_string(num_clouds_ok) + "/" + std::to_string(num_clouds) + " clouds";
                 res->success = true;
             } else {
-                res->message = "No points aggregated";
+                res->message = "No clouds utilized";
                 res->success = false;
             }
         }
@@ -223,10 +220,9 @@ class DenseMapBuilder : public rclcpp::Node
         rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr map_save_server_;
 
         std::vector<geometry_msgs::msg::TransformStamped> *poses_;
-        std::vector<CloudXYZPtrStamped> *clouds_;
+        std::vector<OctocloudStamped> *clouds_;
         int64_t cloud_throttle_period_ns_;
         VoxelGrid<PointXYZ> *voxelgrid_filter_;
-        bool downsample_local_clouds_;
 };
 
 int main(int argc, char* argv[])

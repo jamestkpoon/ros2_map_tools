@@ -11,6 +11,8 @@
 #include <pcl/features/moment_of_inertia_estimation.h>
 #include <Eigen/Dense>
 #include <opencv2/highgui.hpp>
+#include <octomap/octomap.h>
+#include <octomap/OcTree.h>
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/qos.hpp>
@@ -64,7 +66,10 @@ class PclToMap : public rclcpp::Node
             update(Affine3d::Identity());
         }
 
-        bool cloud_loaded() { return cloud_ptr_ != nullptr; }
+        bool cloud_loaded()
+        {
+            return ((cloud_ptr_ != nullptr) && !cloud_ptr_->empty());
+        }
 
     private:
         void t_cb(const geometry_msgs::msg::Vector3::SharedPtr msg)
@@ -137,9 +142,10 @@ class PclToMap : public rclcpp::Node
 
         bool load_cloud()
         {
-            cloud_ptr_ = PointCloud<PointXYZ>::Ptr(new PointCloud<PointXYZ>);
+            cloud_ptr_ = PointCloud<PointXYZ>::Ptr(new PointCloud<PointXYZ>);            
 
-            const auto fp = declare_parameter<std::string>("cloud", "");
+            const auto fp = declare_parameter<std::string>("file", "");
+            auto prob_thresh = declare_parameter<double>("occupancy_likelihood_threshold", 0.5);
             if(fp != "") {
                 auto path = std::filesystem::path(fp);
                 cloud_in_stem_ = path.stem();
@@ -150,6 +156,15 @@ class PclToMap : public rclcpp::Node
                     TextureMesh::Ptr mesh(new TextureMesh);
                     if(OBJReader().read(fp, *mesh) == 0) {
                         fromPCLPointCloud2(mesh->cloud, *cloud_ptr_);
+                    }
+                }
+                else if(cloud_in_ext_ == ".ot") {
+                    octomap::OcTree tree(fp);
+                    for(auto it=tree.begin_leafs(), end=tree.end_leafs(); it!= end; ++it) {
+                        if(it->getOccupancy() >= prob_thresh) {
+                            auto center = it.getCoordinate();
+                            cloud_ptr_->push_back(PointXYZ(center.x(), center.y(), center.z()));
+                        }
                     }
                 }
 

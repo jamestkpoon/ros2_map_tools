@@ -34,13 +34,16 @@ find_package (Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 
+find_package(octomap REQUIRED)
+include_directories(${OCTOMAP_INCLUDE_DIRS})
+
 
 add_executable(pcl_to_map src/pcl_to_map.cpp)
-target_link_libraries(pcl_to_map ${PCL_LIBRARIES} Eigen3::Eigen ${OpenCV_LIBS})
+target_link_libraries(pcl_to_map ${PCL_LIBRARIES} Eigen3::Eigen ${OpenCV_LIBS} ${OCTOMAP_LIBRARIES})
 ament_target_dependencies(pcl_to_map rclcpp geometry_msgs sensor_msgs nav_msgs std_srvs)
 
 add_executable(dense_map_builder src/dense_map_builder.cpp)
-target_link_libraries(dense_map_builder ${PCL_LIBRARIES} Eigen3::Eigen)
+target_link_libraries(dense_map_builder ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
 ament_target_dependencies(dense_map_builder rclcpp tf2_ros geometry_msgs sensor_msgs nav_msgs std_srvs)
 
 install(TARGETS
