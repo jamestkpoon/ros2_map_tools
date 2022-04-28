@@ -22,6 +22,7 @@ Supported input formats: .pcd, .obj, .ot
 - z_min: minimum point z-value for inclusion. Default: 0.0
 - z_max: maximum point z-value for inclusion. Default: 1.8
 - voxel_min_points: minimum point count per occupancy grid cell for occupancy. Default: 1
+- transform: optional comma-separated floating point initial transform as a 6-tuple (tx,ty,tz,rx,ry,rz) or 7-tuple (tx,ty,tz,qx,qy,qz,qw)
 - yaw: yaw value for map origin in metadata. Default: 0.0
 - tf_ext: optional extension override for transform metadata. Default: follows extension of "cloud" param
 

@@ -15,6 +15,8 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
+#include "halodi_ros2_pcl_tools/string_tools.hpp"
+
 using namespace pcl;
 
 #define AUTHORITY "default_authority"
@@ -28,29 +30,9 @@ struct OctocloudStamped
 };
 
 
-std::vector<std::string> split_string(const std::string& s, const char sep)
-{
-    std::vector<std::string> out_;
-    std::string substring_ = "";
-    for(const char& c : s + sep)
-    {
-        if(c != sep) substring_ += c;
-        else if(!substring_.empty())
-        {
-            out_.push_back(substring_);
-            substring_.clear();
-        }
-    }
-
-    return out_;
-}
-
 geometry_msgs::msg::TransformStamped from_tum(const std::string& line, const char sep = ' ')
 {
-    std::vector<double> doubles;
-    for(const auto& s : split_string(line, sep)) {
-        doubles.push_back(std::atof(s.c_str()));
-    }
+    std::vector<double> doubles = split_string_to_doubles(line, sep);
 
     geometry_msgs::msg::TransformStamped stf;
 
