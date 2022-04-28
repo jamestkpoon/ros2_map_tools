@@ -15,7 +15,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
-#include "halodi_ros2_pcl_tools/string_tools.hpp"
+#include "ros2_map_tools/string_tools.hpp"
 
 using namespace pcl;
 
