@@ -4,18 +4,20 @@ Requirements:
 - [PCL](https://pointclouds.org/downloads/)
 - [OpenCV](https://docs.opencv.org/4.x/d7/d9f/tutorial_linux_install.html)  e.g. via ```sudo apt install libopencv-dev```
 - [Eigen3](https://eigen.tuxfamily.org/index.php?title=Main_Page) e.g. via ```sudo apt install libeigen3-dev```
+- [Octomap](https://github.com/octomap/octomap)
 
 ```
 colcon build --packages-select ros2_map_tools
 ```
 
 ## pcl_to_map
-Squashes cloud files into 2D binary occupancy maps compatible with the [ROS2 map_server](https://index.ros.org/p/nav2_map_server).
+Squashes 3D data files into 2D binary occupancy maps compatible with the [ROS2 map_server](https://index.ros.org/p/nav2_map_server).
 
-Supported input formats: .pcd, .obj
+Supported input formats: .pcd, .obj, .ot
 
 ### Params
-- cloud: path to cloud file
+- file: input filepath
+- occupancy_likelihood_threshold: probability threshold for occupancy (applicable formats: .ot). Default: 0.5
 - resolution: occupancy map resolution. Default: 0.05
 - z_min: minimum point z-value for inclusion. Default: 0.0
 - z_max: maximum point z-value for inclusion. Default: 1.8
@@ -63,10 +65,9 @@ ros2 run ros2_map_tools dense_map_builder
 Params:
 - cloud_hz: optional cloud cache throttling frequency if > 0.0 . Default: -1.0
 - trajectory: optional trajectory file in [TUM format](https://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats)
-- cloud: outbound .pcd map path. Default: "cloud"
-- voxel_size: voxel grid size for downsampling. Utilized iff > 0.0 . Default: -1.0
-- voxel_min_points: minimum points per voxel for occupancy. Default: 1
-- downsample_local_clouds: apply voxel downsampling to local point cloud msgs as they are received. Default: true if voxel_size > 0.0
+- voxel_size: voxel grid size. Utilized iff > 0.0 . Default: -1.0
+- voxel_min_points: minimum points per voxel for downsampling inbound point clouds. Default: 1
+- tree: outbound binary .ot path. Default: "tree"
 
 To save the dense cloud once all your data has been published:
 ```
