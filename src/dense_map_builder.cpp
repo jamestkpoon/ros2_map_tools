@@ -56,7 +56,7 @@ class DenseMapBuilder : public rclcpp::Node
         DenseMapBuilder() : Node("dense_map_builder")
         {
             poses_ = new std::vector<geometry_msgs::msg::TransformStamped>();
-            auto trajectory_fp = declare_parameter<std::string>("trajectory", "");
+            const auto trajectory_fp = declare_parameter<std::string>("trajectory", "");
             if(trajectory_fp != "") {
                 std::ifstream file (trajectory_fp);
                 if(file.is_open()) {
@@ -67,14 +67,14 @@ class DenseMapBuilder : public rclcpp::Node
                 }
                 file.close();
 
-                std::cout << "Loaded " << poses_->size() << " poses" << std::endl;
+                RCLCPP_INFO(get_logger(), ("Loaded " + std::to_string(poses_->size()) + " poses").c_str());
             }
 
             clouds_ = new std::vector<OctocloudStamped>();
             cloud_throttle_period_ns_ = 1e9 / declare_parameter<double>("cloud_hz", -1.0);
 
-            float voxel_size = declare_parameter<double>("voxel_size", 0.05);
             voxelgrid_filter_ = new VoxelGrid<PointXYZ>();
+            const float voxel_size = declare_parameter<double>("voxel_size", 0.05);
             voxelgrid_filter_->setLeafSize (voxel_size, voxel_size, voxel_size);
             voxelgrid_filter_->setMinimumPointsNumberPerVoxel(declare_parameter<int>("voxel_min_points", 1));
 
@@ -159,7 +159,7 @@ class DenseMapBuilder : public rclcpp::Node
             poses_->clear();
 
             // populate octomap tree
-            std::cout << "Populating tree ..." << std::endl;
+            RCLCPP_INFO(get_logger(), "Populating tree ...");
             octomap::OcTree tree(voxelgrid_filter_->getLeafSize().x());
             int num_clouds = clouds_->size(), num_clouds_ok = 0, num_clouds_attempted = 0;
             for(const auto& cs : *clouds_) {
@@ -171,8 +171,7 @@ class DenseMapBuilder : public rclcpp::Node
                         octomath::Quaternion(tf.rotation.w, tf.rotation.x, tf.rotation.y, tf.rotation.z));
 
                     tree.insertPointCloud(*cs.cloud, octomap::point3d(0,0,0), pose);
-
-                    std::cout << "  " << num_clouds_attempted << " / " << num_clouds << std::endl;
+                    RCLCPP_INFO(get_logger(), (std::to_string(num_clouds_attempted) + " / " + std::to_string(num_clouds)).c_str());
 
                     if(!rclcpp::ok()) {
                         res->message = "Abort";
@@ -182,7 +181,7 @@ class DenseMapBuilder : public rclcpp::Node
                 }
             }
             clouds_->clear();
-            std::cout << "Tree populated" << std::endl;
+            RCLCPP_INFO(get_logger(), "Tree populated");
 
             // save
             if(tree.size() > 1) {
