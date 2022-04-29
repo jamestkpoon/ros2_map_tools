@@ -45,7 +45,7 @@ Supported input formats: .pcd, .obj, .ot
    ```
    ros2 service call /pcl_to_map/save std_srvs/srv/Trigger
    ```
-   This saves a .png and .yaml pair that can be loaded with map_server (see below), as well as an additional \_tf.yaml containing a transform from map frame to the input cloud (ie. an inverse of the final cumulative transformation).
+   This saves a .png and .yaml pair that can be loaded with map_server (see below). The .yaml also contains the final cumulative transform from map frame to the raw input.
 1. To verify (optional):
    1. Enable the "Map" display in RViz
    1. 

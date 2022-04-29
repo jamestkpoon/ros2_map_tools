@@ -115,23 +115,23 @@ class PclToMap : public rclcpp::Node
             cv::imwrite(image_filename, om_mat_flip);
 
             std::ofstream yaml_stream;
-            const auto yaw = declare_parameter<double>("yaw", 0.0);
+
+            // map_server metadata
             yaml_stream.open(cloud_in_stem_ + ".yaml");
             yaml_stream << "image: " << image_filename << "\n";
             yaml_stream << "resolution: " << og_msg_ptr_->info.resolution << "\n";
-            yaml_stream << "origin: [ " << og_msg_ptr_->info.origin.position.x << ", " << og_msg_ptr_->info.origin.position.y << ", " << yaw << " ]" << "\n";
+            yaml_stream << "origin: [ ";
+            yaml_stream << og_msg_ptr_->info.origin.position.x << ", ";
+            yaml_stream << og_msg_ptr_->info.origin.position.y << ", ";
+            yaml_stream << declare_parameter<double>("yaw", 0.0) << " ]" << "\n";
             yaml_stream << "occupied_thresh: 0.65" << "\n";
             yaml_stream << "free_thresh: 0.19" << "\n";
-            yaml_stream << "negate: 0";
-            yaml_stream.close();
+            yaml_stream << "negate: 0" << "\n";
 
-            // write transform
-            const auto ext = declare_parameter<std::string>("tf_ext", cloud_in_ext_);
-            auto ct_inv = cumulative_transform_.inverse();
-            auto translation = ct_inv.translation();
-            Quaterniond rotation(ct_inv.rotation());
-            yaml_stream.open(cloud_in_stem_ + "_tf.yaml");
-            yaml_stream << "map: " << cloud_in_stem_ << ext << "\n";
+            // additional map transform
+            auto translation = cumulative_transform_.translation();
+            Quaterniond rotation(cumulative_transform_.rotation());
+            yaml_stream << "\nmap: " << cloud_in_stem_ << declare_parameter<std::string>("tf_ext", cloud_in_ext_) << "\n";
             yaml_stream << "transform:\n";
             yaml_stream << "  translation:\n";
             yaml_stream << "    x: " << std::to_string(translation.x()) << "\n";
@@ -142,6 +142,7 @@ class PclToMap : public rclcpp::Node
             yaml_stream << "    y: " << std::to_string(rotation.y()) << "\n";
             yaml_stream << "    z: " << std::to_string(rotation.z()) << "\n";
             yaml_stream << "    w: " << std::to_string(rotation.w()) << "\n";
+
             yaml_stream.close();
 
             res->success = true;
@@ -152,7 +153,7 @@ class PclToMap : public rclcpp::Node
             cloud_ptr_ = PointCloud<PointXYZ>::Ptr(new PointCloud<PointXYZ>);            
 
             const auto fp = declare_parameter<std::string>("file", "");
-            auto prob_thresh = declare_parameter<double>("occupancy_likelihood_threshold", 0.5);
+            const auto prob_thresh = declare_parameter<double>("occupancy_likelihood_threshold", 0.5);
             if(fp != "") {
                 auto path = std::filesystem::path(fp);
                 cloud_in_stem_ = path.stem();
@@ -173,14 +174,13 @@ class PclToMap : public rclcpp::Node
                         }
                     }
                 } else {
-                    std::string err = "Unrecognized extension: " + cloud_in_ext_;
-                    RCLCPP_ERROR(get_logger(), err.c_str());
+                    RCLCPP_ERROR(get_logger(), ("Unrecognized extension: " + cloud_in_ext_).c_str());
                 }
 
                 if(cloud_loaded()) {
-                    std::cout << "Loaded " << fp << " (" << cloud_ptr_->size() << " points)" << std::endl;
+                    RCLCPP_INFO(get_logger(), ("Loaded " + fp + " (" + std::to_string(cloud_ptr_->size()) + " points)").c_str());
                 } else {
-                    std::cout << "Unable to load " << fp << std::endl;
+                    RCLCPP_ERROR(get_logger(), ("Unable to load " + fp).c_str());
                 }
             }
 
@@ -244,7 +244,7 @@ class PclToMap : public rclcpp::Node
         {
             Affine3d transform = Affine3d::Identity();
 
-            auto initial_transform = declare_parameter<std::string>("transform", "");
+            const auto initial_transform = declare_parameter<std::string>("transform", "");
             if(initial_transform != "") {
                 auto doubles = split_string_to_doubles(initial_transform, ',');
                 switch(doubles.size()) {
@@ -257,8 +257,7 @@ class PclToMap : public rclcpp::Node
                         transform.rotate(Quaterniond(doubles[6], doubles[3], doubles[4], doubles[5]));
                         break;
                     default:
-                        std::string err = "Invalid transform parameter: " + initial_transform;
-                        RCLCPP_ERROR(get_logger(), err.c_str());
+                        RCLCPP_ERROR(get_logger(), ("Invalid transform parameter: " + initial_transform).c_str());
                         break;
                 }
             }
