@@ -78,6 +78,8 @@ class DenseMapBuilder : public rclcpp::Node
             voxelgrid_filter_->setLeafSize (voxel_size, voxel_size, voxel_size);
             voxelgrid_filter_->setMinimumPointsNumberPerVoxel(declare_parameter<int>("voxel_min_points", 1));
 
+            out_fp_ = declare_parameter<std::string>("tree", "tree") + ".ot";
+
             odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
                 "odom", 10, std::bind(&DenseMapBuilder::odom_callback, this, std::placeholders::_1));
             cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -185,7 +187,7 @@ class DenseMapBuilder : public rclcpp::Node
 
             // save
             if(tree.size() > 1) {
-                tree.writeBinary(declare_parameter<std::string>("tree", "tree") + ".ot");
+                tree.writeBinary(out_fp_);
 
                 res->message = std::to_string(tree.getNumLeafNodes()) + " leaf nodes from "
                     + std::to_string(num_clouds_ok) + "/" + std::to_string(num_clouds) + " clouds";
@@ -204,6 +206,7 @@ class DenseMapBuilder : public rclcpp::Node
         std::vector<OctocloudStamped> *clouds_;
         int64_t cloud_throttle_period_ns_;
         VoxelGrid<PointXYZ> *voxelgrid_filter_;
+        std::string out_fp_;
 };
 
 int main(int argc, char* argv[])
