@@ -49,6 +49,9 @@ class PclToMap : public rclcpp::Node
         {
             if(!load_cloud()) { return; }
 
+            map_yaw_param_ = std::to_string(declare_parameter<double>("yaw", 0.0));
+            map_ext_param_ = declare_parameter<std::string>("tf_ext", cloud_in_ext_);
+
             auto sub_qos = rclcpp::QoS(10); sub_qos.reliable(); sub_qos.durability_volatile();
             t_sub_ = create_subscription<geometry_msgs::msg::Vector3>("~/translate", sub_qos, std::bind(&PclToMap::t_cb, this, std::placeholders::_1));
             r_sub_ = create_subscription<geometry_msgs::msg::Vector3>("~/rotate",    sub_qos, std::bind(&PclToMap::r_cb, this, std::placeholders::_1));
@@ -104,7 +107,7 @@ class PclToMap : public rclcpp::Node
         {
             (void)req_header; (void)req; // suppress unused
 
-            // write 2D map + metadata
+            // write 2D map image
             cv::Mat om_mat = cv::Mat(cv::Size(og_msg_ptr_->info.width, og_msg_ptr_->info.height), CV_8U, &og_msg_ptr_->data[0]),
                 om_mat_flip = cv::Mat(om_mat.size(), CV_8U), occ_mask = cv::Mat(om_mat.size(), CV_8U);
             cv::flip(om_mat, om_mat_flip, 0);
@@ -123,7 +126,7 @@ class PclToMap : public rclcpp::Node
             yaml_stream << "origin: [ ";
             yaml_stream << og_msg_ptr_->info.origin.position.x << ", ";
             yaml_stream << og_msg_ptr_->info.origin.position.y << ", ";
-            yaml_stream << declare_parameter<double>("yaw", 0.0) << " ]" << "\n";
+            yaml_stream << map_yaw_param_ << " ]" << "\n";
             yaml_stream << "occupied_thresh: 0.65" << "\n";
             yaml_stream << "free_thresh: 0.19" << "\n";
             yaml_stream << "negate: 0" << "\n";
@@ -131,7 +134,7 @@ class PclToMap : public rclcpp::Node
             // additional map transform
             auto translation = cumulative_transform_.translation();
             Quaterniond rotation(cumulative_transform_.rotation());
-            yaml_stream << "\nmap: " << cloud_in_stem_ << declare_parameter<std::string>("tf_ext", cloud_in_ext_) << "\n";
+            yaml_stream << "\nmap: " << cloud_in_stem_ << map_ext_param_ << "\n";
             yaml_stream << "transform:\n";
             yaml_stream << "  translation:\n";
             yaml_stream << "    x: " << std::to_string(translation.x()) << "\n";
@@ -272,7 +275,7 @@ class PclToMap : public rclcpp::Node
         nav_msgs::msg::OccupancyGrid* og_msg_ptr_;
 
         PointCloud<PointXYZ>::Ptr cloud_ptr_;
-        std::string cloud_in_stem_, cloud_in_ext_;
+        std::string cloud_in_stem_, cloud_in_ext_, map_yaw_param_, map_ext_param_;
         Affine3d cumulative_transform_;
         PassThrough<PointXYZ> *z_filter_;
         VoxelGrid<PointXYZ> *voxelgrid_filter_;
