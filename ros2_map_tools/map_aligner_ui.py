@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-import pathlib
 from copy import deepcopy
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
 from os.path import exists
+from pathlib import Path
 from typing import Dict, Iterable
 
 import cv2
@@ -62,11 +62,11 @@ def _transform_matrix_from_2d_pose(pose: Iterable[float]):
 def _transform_px_to_pos(pp, px: Iterable[float], res: float):
     cosyaw = np.cos(pp[1][2])
     sinyaw = np.sin(pp[1][2])
-    r = np.asarray([[cosyaw, -sinyaw], [sinyaw, cosyaw]]).T
+    r = np.asarray([[cosyaw, -sinyaw], [sinyaw, cosyaw]])
 
     dx = (px[0] - pp[0][0]) * res
     dy = -(px[1] - pp[0][1]) * res
-    pos = np.matmul(r, (dx, dy))
+    pos = np.matmul(r.T, (dx, dy))
 
     return pp[1][:2] + pos
 
@@ -74,7 +74,7 @@ def _transform_px_to_pos(pp, px: Iterable[float], res: float):
 class Map:
     def __init__(self, yaml_fp: str, resolution_override: float = None):
         self.metadata_: dict = yaml.safe_load(open(yaml_fp, "r", encoding="utf-8"))
-        self.md_fp_ = pathlib.Path(yaml_fp)
+        self.md_fp_ = Path(yaml_fp)
 
         self.maps_: Dict[str, np.ndarray] = {
             "map": cv2.imread(
@@ -124,7 +124,7 @@ class Map:
 
     @property
     def free_color(self):
-        return 0 if self.metadata["negate"] else 255
+        return 0 if self.metadata_["negate"] else 255
 
     @property
     def occupied_color(self):
@@ -403,11 +403,11 @@ if __name__ == "__main__":
         origin_pose.append(float(target_blpp[1][2]))
 
         img_ext = metadata["image"][metadata["image"].rfind(".") :]
-        metadata["image"] = cmn + img_ext
+        metadata["image"] = Path(cmn).stem + img_ext
         metadata["origin"] = origin_pose
         yaml.dump(metadata, open(cmn + ".yaml", "w", encoding="utf-8"))
 
-        cv2.imwrite(metadata["image"], combined_map)
+        cv2.imwrite(cmn + img_ext, combined_map)
 
         print("Saved combined map")
 
