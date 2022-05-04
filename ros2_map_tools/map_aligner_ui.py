@@ -75,11 +75,11 @@ class Map:
     def __init__(self, yaml_fp: str, resolution_override: float = None):
         with open(yaml_fp, "r", encoding="utf-8") as f:
             self.metadata_: dict = yaml.safe_load(f)
-        self.md_fp_ = Path(yaml_fp)
+        self.yaml_fp_ = Path(yaml_fp)
 
         self.maps_: Dict[str, np.ndarray] = {
             "map": cv2.imread(
-                str(self.md_fp_.parent.joinpath(self.metadata_["image"])),
+                str(self.yaml_fp_.parent.joinpath(self.metadata_["image"])),
                 cv2.IMREAD_GRAYSCALE,
             )
         }
@@ -164,7 +164,7 @@ class Map:
         if isinstance(tf := metadata.get("transform"), dict):
             self._apply_new_origin_to_transform(tf, metadata["origin"])
 
-        fp = str(self.md_fp_)
+        fp = str(self.yaml_fp_)
         fp = fp[: fp.rfind(".")] + "_aligned.yaml"
         with open(fp, "w", encoding="utf-8") as f:
             yaml.dump(metadata, f)
@@ -303,8 +303,8 @@ if __name__ == "__main__":
                     )
                 ).astype(int)
             )
-            cm_with_smap = np.empty((cm_br[3], cm_br[2]), np.uint8)
-            cm_with_smap.fill(unknown_color)
+            combined_map_new = np.empty((cm_br[3], cm_br[2]), np.uint8)
+            combined_map_new.fill(unknown_color)
 
             # slices
             cm_old_slice = np.index_exp[
@@ -318,29 +318,27 @@ if __name__ == "__main__":
             ]
 
             # draw free regions and prior occupied
-            cm_with_smap[cm_old_slice][combined_map == free_color] = free_color
-            cm_with_smap_ss = cm_with_smap[source_slice]
-            cm_with_smap_ss[source_free_rotated > 0] = free_color
-            cm_with_smap[cm_old_slice][combined_map == occ_color] = occ_thresh_color
+            combined_map_new[cm_old_slice][combined_map == free_color] = free_color
+            cmn_ss = combined_map_new[source_slice]
+            cmn_ss[source_free_rotated > 0] = free_color
+            combined_map_new[cm_old_slice][combined_map == occ_color] = occ_thresh_color
 
             # draw tentatively occupied
-            prior_occ_roi = cm_with_smap_ss == occ_thresh_color
+            prior_occ_roi = cmn_ss == occ_thresh_color
             source_occ_roi = source_occ_rotated > 0
-            cm_with_smap_ss[np.logical_and(prior_occ_roi, source_occ_roi)] = occ_color
-            cm_with_smap_ss[
-                np.logical_and(~prior_occ_roi, source_occ_roi)
-            ] = occ_thresh_color
+            cmn_ss[np.logical_and(prior_occ_roi, source_occ_roi)] = occ_color
+            cmn_ss[np.logical_and(~prior_occ_roi, source_occ_roi)] = occ_thresh_color
 
             # show with submap border
-            cm_with_smap_border = cm_with_smap.copy()
+            cmn_with_source_border = combined_map_new.copy()
             cv2.drawContours(
-                cm_with_smap_border,
+                cmn_with_source_border,
                 [border + source_ul],
                 contourIdx=0,
                 color=occ_color,
                 thickness=1,
             )
-            conn_a.send(cm_with_smap_border)
+            conn_a.send(cmn_with_source_border)
 
             # handle user input
             user_input = input(
@@ -349,7 +347,8 @@ if __name__ == "__main__":
                 + ": "
             ).lower()
             if user_input == SUBMAP_BREAK_KEY:
-                combined_map = cm_with_smap
+                combined_map_new[combined_map_new == occ_thresh_color] = occ_color
+                combined_map = combined_map_new
 
                 target_blpp[0][:] -= cm_br[:2]
                 source_blpp_tf_px = (
