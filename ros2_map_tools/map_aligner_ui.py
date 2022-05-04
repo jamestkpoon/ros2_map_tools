@@ -73,7 +73,8 @@ def _transform_px_to_pos(pp, px: Iterable[float], res: float):
 
 class Map:
     def __init__(self, yaml_fp: str, resolution_override: float = None):
-        self.metadata_: dict = yaml.safe_load(open(yaml_fp, "r", encoding="utf-8"))
+        with open(yaml_fp, "r", encoding="utf-8") as f:
+            self.metadata_: dict = yaml.safe_load(f)
         self.md_fp_ = Path(yaml_fp)
 
         self.maps_: Dict[str, np.ndarray] = {
@@ -111,10 +112,6 @@ class Map:
         )
 
     @property
-    def metadata(self):
-        return deepcopy(self.metadata_)
-
-    @property
     def res(self):
         return self.res_
 
@@ -122,15 +119,15 @@ class Map:
     def shape(self):
         return self.maps_["map"].shape
 
-    @property
+    def copy_metadata(self):
+        return deepcopy(self.metadata_)
+
     def free_color(self):
         return 0 if self.metadata_["negate"] else 255
 
-    @property
     def occupied_color(self):
-        return 255 - self.free_color
+        return 255 - self.free_color()
 
-    @property
     def unknown_color(self):
         return round(
             255
@@ -138,12 +135,10 @@ class Map:
             / 2
         )
 
-    @property
     def occupied_threshold_color(self):
         v = min(255, int(np.ceil(self.metadata_["occupied_thresh"] * 255)) + 1)
         return v if self.metadata_["negate"] else (255 - v)
 
-    @property
     def unrotated_bl_px_pose(self):
         return self.transform_bl_px_pose(
             np.asarray([[1, 0, 0], [0, 1, 0]], dtype=float), 0.0
@@ -153,16 +148,7 @@ class Map:
         return self.maps_[key]
 
     def transform_bl_px_pose(self, m: np.ndarray, ccw_deg: float):
-        origin = np.matmul(
-            m,
-            (
-                -self.metadata_["origin"][0] / self.res_,
-                self.shape[0] - self.metadata_["origin"][1] / self.res_,
-                1,
-            ),
-        )
         bl = np.matmul(m, (0, self.shape[0], 1))[:2]
-
         bl_pose = np.asarray(self.metadata_["origin"]) + (
             bl[0] * self.res_,
             -(bl[1] - self.shape[0]) * self.res_,
@@ -172,7 +158,7 @@ class Map:
         return (bl, bl_pose)
 
     def write(self, origin: Iterable[float]):
-        metadata = self.metadata
+        metadata = self.copy_metadata()
         metadata["origin"] = list(map(float, origin))
 
         if isinstance(tf := metadata.get("transform"), dict):
@@ -180,7 +166,8 @@ class Map:
 
         fp = str(self.md_fp_)
         fp = fp[: fp.rfind(".")] + "_aligned.yaml"
-        yaml.dump(metadata, open(fp, "w", encoding="utf-8"))
+        with open(fp, "w", encoding="utf-8") as f:
+            yaml.dump(metadata, f)
 
         return fp
 
@@ -221,8 +208,8 @@ def _get_valid_filepath(prompt: str):
         fp = input(prompt)
         if exists(fp):
             return fp
-        else:
-            print("Path not found, please try again")
+
+        print("Path not found, please try again")
 
 
 def _parse_adjustment_cmd(cmd: str):
@@ -242,17 +229,23 @@ if __name__ == "__main__":
     # target submap and combined metadata
     user_input = _get_valid_filepath("Target .yaml: ")
     target = Map(user_input)
-    target_blpp = target.unrotated_bl_px_pose
-    metadata = target.metadata
+    target_blpp = target.unrotated_bl_px_pose()
+    metadata = target.copy_metadata()
     if "map" in metadata:
         del metadata["map"]
         del metadata["transform"]
 
+    # store some colors
+    free_color = target.free_color()
+    occ_color = target.occupied_color()
+    occ_thresh_color = target.occupied_threshold_color()
+    unknown_color = target.unknown_color()
+
     # start from target map
     combined_map = np.empty(target.shape, dtype=np.uint8)
-    combined_map.fill(target.unknown_color)
-    combined_map[target.get_map("free")] = target.free_color
-    combined_map[target.get_map("occupied")] = target.occupied_color
+    combined_map.fill(unknown_color)
+    combined_map[target.get_map("free")] = free_color
+    combined_map[target.get_map("occupied")] = occ_color
     conn_a.send(combined_map)
 
     # align submaps
@@ -265,7 +258,7 @@ if __name__ == "__main__":
             continue
 
         source = Map(user_input, target.res)
-        source_blpp = source.unrotated_bl_px_pose
+        source_blpp = source.unrotated_bl_px_pose()
         source_free = 255 * source.get_map("free")
         source_occ = 255 * source.get_map("occupied")
 
@@ -311,7 +304,7 @@ if __name__ == "__main__":
                 ).astype(int)
             )
             cm_with_smap = np.empty((cm_br[3], cm_br[2]), np.uint8)
-            cm_with_smap.fill(target.unknown_color)
+            cm_with_smap.fill(unknown_color)
 
             # slices
             cm_old_slice = np.index_exp[
@@ -325,24 +318,18 @@ if __name__ == "__main__":
             ]
 
             # draw free regions and prior occupied
-            cm_with_smap[cm_old_slice][
-                combined_map == target.free_color
-            ] = target.free_color
+            cm_with_smap[cm_old_slice][combined_map == free_color] = free_color
             cm_with_smap_ss = cm_with_smap[source_slice]
-            cm_with_smap_ss[source_free_rotated > 0] = target.free_color
-            cm_with_smap[cm_old_slice][
-                combined_map == target.occupied_color
-            ] = target.occupied_threshold_color
+            cm_with_smap_ss[source_free_rotated > 0] = free_color
+            cm_with_smap[cm_old_slice][combined_map == occ_color] = occ_thresh_color
 
             # draw tentatively occupied
-            prior_occ_roi = cm_with_smap_ss == target.occupied_threshold_color
+            prior_occ_roi = cm_with_smap_ss == occ_thresh_color
             source_occ_roi = source_occ_rotated > 0
-            cm_with_smap_ss[
-                np.logical_and(prior_occ_roi, source_occ_roi)
-            ] = target.occupied_color
+            cm_with_smap_ss[np.logical_and(prior_occ_roi, source_occ_roi)] = occ_color
             cm_with_smap_ss[
                 np.logical_and(~prior_occ_roi, source_occ_roi)
-            ] = target.occupied_threshold_color
+            ] = occ_thresh_color
 
             # show with submap border
             cm_with_smap_border = cm_with_smap.copy()
@@ -350,7 +337,7 @@ if __name__ == "__main__":
                 cm_with_smap_border,
                 [border + source_ul],
                 contourIdx=0,
-                color=target.occupied_color,
+                color=occ_color,
                 thickness=1,
             )
             conn_a.send(cm_with_smap_border)
@@ -405,7 +392,8 @@ if __name__ == "__main__":
         img_ext = metadata["image"][metadata["image"].rfind(".") :]
         metadata["image"] = Path(cmn).stem + img_ext
         metadata["origin"] = origin_pose
-        yaml.dump(metadata, open(cmn + ".yaml", "w", encoding="utf-8"))
+        with open(cmn + ".yaml", "w", encoding="utf-8") as f:
+            yaml.dump(metadata, f)
 
         cv2.imwrite(cmn + img_ext, combined_map)
 
