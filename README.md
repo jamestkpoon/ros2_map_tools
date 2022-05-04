@@ -82,5 +82,5 @@ A "UI" to align >=2 2D maps together, to generate new map metadatas and a final 
 Future work may be towards automating this, given the assumption of maps that fit together cleanly and are suitable for alignment via feature matching.
 
 ```
-ros2 run ros2_map_tools dense_map_builder
+ros2 run ros2_map_tools map_aligner_ui.py
 ```
