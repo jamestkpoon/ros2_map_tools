@@ -5,9 +5,10 @@ Requirements:
 - [OpenCV](https://docs.opencv.org/4.x/d7/d9f/tutorial_linux_install.html)  e.g. via ```sudo apt install libopencv-dev```
 - [Eigen3](https://eigen.tuxfamily.org/index.php?title=Main_Page) e.g. via ```sudo apt install libeigen3-dev```
 - [Octomap](https://github.com/octomap/octomap)
+- python3 modules: [cv2](https://pypi.org/project/opencv-python/), [numpy](https://numpy.org/install/), [scipy](https://scipy.org/install/), [yaml](https://pypi.org/project/PyYAML/)
 
 ```
-colcon build --packages-select ros2_map_tools
+colcon build --packages-select ros2_map_tools --cmake-args -DCMAKE_BUILD_TYPE=Release
 ```
 
 ## pcl_to_map
@@ -75,3 +76,11 @@ To save the dense cloud once all your data has been published:
 ros2 service call /dense_map_builder/save std_srvs/srv/Trigger
 ```
 Note: This will clear the message buffers, unless there are no point clouds available.
+
+## map_aligner_ui.py
+A "UI" to align >=2 2D maps together, to generate new map metadatas and a final combined map.
+Future work may be towards automating this, given the assumption of maps that fit together cleanly and are suitable for alignment via feature matching.
+
+```
+ros2 run ros2_map_tools dense_map_builder
+```

@@ -6,19 +6,19 @@
 
 std::vector<std::string> split_string(const std::string& s, const char sep)
 {
-    std::vector<std::string> out_;
-    std::string substring_ = "";
+    std::vector<std::string> out;
+    std::string substring = "";
     for(const char& c : s + sep)
     {
-        if(c != sep) substring_ += c;
-        else if(!substring_.empty())
+        if(c != sep) substring += c;
+        else if(!substring.empty())
         {
-            out_.push_back(substring_);
-            substring_.clear();
+            out.push_back(substring);
+            substring.clear();
         }
     }
 
-    return out_;
+    return out;
 }
 
 std::vector<double> split_string_to_doubles(const std::string& s, const char sep)
