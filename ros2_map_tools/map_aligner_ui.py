@@ -62,7 +62,7 @@ def _transform_matrix_from_2d_pose(pose: Iterable[float]):
 def _transform_px_to_pos(pp, px: Iterable[float], res: float):
     cosyaw = np.cos(pp[1][2])
     sinyaw = np.sin(pp[1][2])
-    r = np.asarray([[cosyaw, -sinyaw], [sinyaw, cosyaw]])
+    r = np.asarray([[cosyaw, -sinyaw], [sinyaw, cosyaw]]).T
 
     dx = (px[0] - pp[0][0]) * res
     dy = -(px[1] - pp[0][1]) * res
