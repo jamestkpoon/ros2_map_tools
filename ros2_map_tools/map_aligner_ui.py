@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+"""A UI for aligning maps to be used with ROS map_server."""
+
 from copy import deepcopy
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
@@ -22,6 +24,7 @@ TERM_KEYS = ("exit", "quit")
 
 
 def imshow_loop(conn: Connection):
+    """cv2.imshow blocking loop, intended for multiprocessing."""
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
 
     while True:
@@ -72,6 +75,8 @@ def _transform_px_to_pos(pp, px: Iterable[float], res: float):
 
 
 class Map:
+    """A class for handling map .yaml metadata files."""
+
     def __init__(self, yaml_fp: str, resolution_override: float = None):
         with open(yaml_fp, "r", encoding="utf-8") as f:
             self.metadata_: dict = yaml.safe_load(f)
@@ -108,27 +113,33 @@ class Map:
             255 * self.metadata_["occupied_thresh"]
         )
         self.maps_["unknown"] = np.logical_not(
-            np.logical_and(self.maps_["free"], self.maps_["occupied"])
+            self.maps_["free"] & self.maps_["occupied"]
         )
 
     @property
     def res(self):
+        """Map resolution. Differs from that of metadata if overridden during init."""
         return self.res_
 
     @property
     def shape(self):
+        """Map shape (height, width) ."""
         return self.maps_["map"].shape
 
     def copy_metadata(self):
+        """Deep copy of the metadata dict."""
         return deepcopy(self.metadata_)
 
     def free_color(self):
+        """Extreme free color."""
         return 0 if self.metadata_["negate"] else 255
 
     def occupied_color(self):
+        """Extreme occupied color."""
         return 255 - self.free_color()
 
     def unknown_color(self):
+        """Color in between the free and occupied thresholds."""
         return round(
             255
             * (self.metadata_["free_thresh"] + self.metadata_["occupied_thresh"])
@@ -136,18 +147,25 @@ class Map:
         )
 
     def occupied_threshold_color(self):
+        """A color that is just within the occupied threshold."""
         v = min(255, int(np.ceil(self.metadata_["occupied_thresh"] * 255)) + 1)
         return v if self.metadata_["negate"] else (255 - v)
 
+    def get_map(self, key: str):
+        """Map dict accessor."""
+        return self.maps_[key]
+
     def unrotated_bl_px_pose(self):
+        """Helper function that returns the un-rotated bottom-left
+        pixel co-ordinate and pose."""
         return self.transform_bl_px_pose(
             np.asarray([[1, 0, 0], [0, 1, 0]], dtype=float), 0.0
         )
 
-    def get_map(self, key: str):
-        return self.maps_[key]
-
     def transform_bl_px_pose(self, m: np.ndarray, ccw_deg: float):
+        """Returns the transformed bottom-left pixel co-ordinate and pose
+        after a ccw rotation."""
+
         bl = np.matmul(m, (0, self.shape[0], 1))[:2]
         bl_pose = np.asarray(self.metadata_["origin"]) + (
             bl[0] * self.res_,
@@ -158,6 +176,8 @@ class Map:
         return (bl, bl_pose)
 
     def write(self, origin: Iterable[float]):
+        """Write new .yaml with over-written origin."""
+
         metadata = self.copy_metadata()
         metadata["origin"] = list(map(float, origin))
 
@@ -221,6 +241,8 @@ def _parse_adjustment_cmd(cmd: str):
 
 
 def main(_=None):
+    """External entry pt."""
+
     # start imshow process
     conn_a, conn_b = Pipe()
     imshow_process = Process(target=imshow_loop, args=(conn_b,), daemon=True)
@@ -302,7 +324,7 @@ def main(_=None):
             combined_map_new = np.empty((cm_br[3], cm_br[2]), np.uint8)
             combined_map_new.fill(unknown_color)
 
-            # slices
+            # ROIs
             cm_old_slice = np.index_exp[
                 -cm_br[1] : -cm_br[1] + combined_map.shape[0],
                 -cm_br[0] : -cm_br[0] + combined_map.shape[1],
@@ -312,18 +334,19 @@ def main(_=None):
                 source_ul[1] : source_ul[1] + shape_xy[1],
                 source_ul[0] : source_ul[0] + shape_xy[0],
             ]
+            cmn_t_roi = combined_map_new[cm_old_slice]
+            cmn_s_roi = combined_map_new[source_slice]
 
             # draw free regions and prior occupied
-            combined_map_new[cm_old_slice][combined_map == free_color] = free_color
-            cmn_ss = combined_map_new[source_slice]
-            cmn_ss[source_free_rotated > 0] = free_color
-            combined_map_new[cm_old_slice][combined_map == occ_color] = occ_thresh_color
+            cmn_t_roi[combined_map == free_color] = free_color
+            cmn_s_roi[source_free_rotated > 0] = free_color
+            cmn_t_roi[combined_map == occ_color] = occ_thresh_color
 
             # draw tentatively occupied
-            prior_occ_roi = cmn_ss == occ_thresh_color
-            source_occ_roi = source_occ_rotated > 0
-            cmn_ss[np.logical_and(prior_occ_roi, source_occ_roi)] = occ_color
-            cmn_ss[np.logical_and(~prior_occ_roi, source_occ_roi)] = occ_thresh_color
+            source_occ_mask = source_occ_rotated > 0
+            prior_occ_mask = cmn_s_roi == occ_thresh_color
+            cmn_s_roi[source_occ_mask & prior_occ_mask] = occ_color
+            cmn_s_roi[source_occ_mask & ~prior_occ_mask] = occ_thresh_color
 
             # show with submap border
             cmn_with_source_border = combined_map_new.copy()
