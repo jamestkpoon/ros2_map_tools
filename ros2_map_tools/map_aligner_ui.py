@@ -220,22 +220,18 @@ def _parse_adjustment_cmd(cmd: str):
         return (None, None)
 
 
-if __name__ == "__main__":
+def main(_=None):
     # start imshow process
     conn_a, conn_b = Pipe()
     imshow_process = Process(target=imshow_loop, args=(conn_b,), daemon=True)
     imshow_process.start()
 
-    # target submap and combined metadata
+    # target submap
     user_input = _get_valid_filepath("Target .yaml: ")
     target = Map(user_input)
     target_blpp = target.unrotated_bl_px_pose()
-    metadata = target.copy_metadata()
-    if "map" in metadata:
-        del metadata["map"]
-        del metadata["transform"]
 
-    # store some colors
+    # drawing colors
     free_color = target.free_color()
     occ_color = target.occupied_color()
     occ_thresh_color = target.occupied_threshold_color()
@@ -388,6 +384,10 @@ if __name__ == "__main__":
         )
         origin_pose.append(float(target_blpp[1][2]))
 
+        metadata = target.copy_metadata()
+        if "map" in metadata:
+            del metadata["map"]
+            del metadata["transform"]
         img_ext = metadata["image"][metadata["image"].rfind(".") :]
         metadata["image"] = Path(cmn).stem + img_ext
         metadata["origin"] = origin_pose
@@ -402,3 +402,7 @@ if __name__ == "__main__":
     conn_a.send(None)
     imshow_process.join()
     imshow_process.close()
+
+
+if __name__ == "__main__":
+    main()
