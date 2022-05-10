@@ -176,6 +176,17 @@ class PclToMap : public rclcpp::Node
                             cloud_ptr_->push_back(PointXYZ(center.x(), center.y(), center.z()));
                         }
                     }
+                } else if(cloud_in_ext_ == ".xyz") {
+                    std::ifstream file(fp);
+                    if(file.is_open())
+                    {
+                        std::string line;
+                        while(getline(file, line))
+                        {
+                            auto xyz_rgb = split_string_to_doubles(line, ' ');
+                            cloud_ptr_->push_back(PointXYZ(xyz_rgb[0], xyz_rgb[1], xyz_rgb[2]));
+                        }
+                    }
                 } else {
                     RCLCPP_ERROR(get_logger(), ("Unrecognized extension: " + cloud_in_ext_).c_str());
                 }
