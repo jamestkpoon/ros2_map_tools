@@ -67,6 +67,7 @@ ros2 run ros2_map_tools dense_map_builder
 Params:
 - cloud_hz: optional cloud cache throttling frequency if > 0.0 . Default: -1.0
 - trajectory: optional trajectory file in [TUM format](https://vision.in.tum.de/data/datasets/rgbd-dataset/file_formats)
+- odom_topic: optional odometry topic. If omitted, incoming cloud msgs with stamps beyond the range in the trajectory file will be rejected
 - voxel_size: voxel grid size. Default: 0.05
 - voxel_min_points: minimum points per voxel for downsampling inbound point clouds. Default: 1
 - tree: outbound binary .ot path. Default: "tree"

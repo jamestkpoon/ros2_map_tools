@@ -80,8 +80,14 @@ class DenseMapBuilder : public rclcpp::Node
 
             out_fp_ = declare_parameter<std::string>("tree", "tree") + ".ot";
 
-            odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-                "odom", 10, std::bind(&DenseMapBuilder::odom_callback, this, std::placeholders::_1));
+            auto odom_topic = declare_parameter<std::string>("odom_topic", "");
+            if(odom_topic != "") {
+                odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+                    odom_topic, 10, std::bind(&DenseMapBuilder::odom_callback, this, std::placeholders::_1));
+            } else {
+                odom_sub_ = nullptr;
+            }
+            
             cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
                 "cloud", 10, std::bind(&DenseMapBuilder::cloud_callback, this, std::placeholders::_1));
 
@@ -119,6 +125,17 @@ class DenseMapBuilder : public rclcpp::Node
         {
             OctocloudStamped cs;
             cs.stamp = tf2_ros::fromMsg(msg.header.stamp);
+
+            if(!odom_sub_ && !poses_->empty()) {
+                if(cs.stamp < tf2_ros::fromMsg(poses_->front().header.stamp)) {
+                    RCLCPP_WARN(get_logger(), "Cloud rejected - timestamp before trajectory start");
+                    return;
+                }
+                if(cs.stamp > tf2_ros::fromMsg(poses_->back().header.stamp)) {
+                    RCLCPP_WARN(get_logger(), "Cloud rejected  - timestamp after trajectory end");
+                    return;
+                }
+            }
 
             // downsample
             PCLPointCloud2 pcl_pc2; pcl_conversions::toPCL(msg, pcl_pc2);
