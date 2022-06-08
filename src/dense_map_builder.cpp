@@ -138,9 +138,8 @@ class DenseMapBuilder : public rclcpp::Node
             }
 
             // downsample
-            PCLPointCloud2 pcl_pc2; pcl_conversions::toPCL(msg, pcl_pc2);
             PointCloud<PointXYZ>::Ptr cloud(new PointCloud<PointXYZ>);
-            fromPCLPointCloud2(pcl_pc2, *cloud);
+            fromROSMsg(msg, *cloud);
             voxelgrid_filter_->setInputCloud (cloud);
             PointCloud<PointXYZ>::Ptr cloud_downsample(new PointCloud<PointXYZ>);
             voxelgrid_filter_->filter (*cloud_downsample);
