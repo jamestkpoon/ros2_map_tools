@@ -1,7 +1,7 @@
 # ros2_map_tools
 
 Requirements:
-- [PCL](https://pointclouds.org/downloads/)
+- [PCL](https://pointclouds.org/downloads/) e.g. via ```sudo apt install libpcl-dev ros-${ROS_DISTRO}-pcl-ros```
 - [OpenCV](https://docs.opencv.org/4.x/d7/d9f/tutorial_linux_install.html)  e.g. via ```sudo apt install libopencv-dev```
 - [Eigen3](https://eigen.tuxfamily.org/index.php?title=Main_Page) e.g. via ```sudo apt install libeigen3-dev```
 - [Octomap](https://github.com/octomap/octomap)
