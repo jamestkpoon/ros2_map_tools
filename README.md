@@ -28,12 +28,15 @@ Supported input formats: .pcd, .obj, .ot, .xyz
 - tf_ext: optional extension override for transform metadata. Default: follows extension of "cloud" param
 
 ### Usage
-1. Load config/pcl_to_map.rviz in RViz
-1.
+1. In one terminal, load config/pcl_to_map.rviz in RViz, e.g.:
    ```
-   ros2 run ros2_map_tools pcl_to_map
+   rviz2 -d config/pcl_to_map.rviz
    ```
-1. Iteratively transform the cloud until the occupancy map looks OK:
+1. In a second terminal: 
+   ```
+   ros2 run ros2_map_tools pcl_to_map --ros-args ...
+   ```
+1. In a third terminal, iteratively transform the cloud until the occupancy map looks OK:
    - translate:
       ```
       ros2 topic pub --once /pcl_to_map/translate geometry_msgs/msg/Vector3 "{x: 0.0, y: 0.0, z: 0.0 }"
@@ -42,14 +45,14 @@ Supported input formats: .pcd, .obj, .ot, .xyz
       ```
       ros2 topic pub --once /pcl_to_map/rotate geometry_msgs/msg/Vector3 "{x: 0.0, y: 0.0, z: 0.0 }"
       ```
-1. To save:
+1. To save (suggested to call from third terminal):
    ```
    ros2 service call /pcl_to_map/save std_srvs/srv/Trigger
    ```
    This saves a .png and .yaml pair that can be loaded with map_server (see below). The .yaml also contains the final cumulative transform from map frame to the raw input.
 1. To verify (optional):
    1. Enable the "Map" display in RViz
-   1. 
+   1. From some other terminal not running RViz:
       ```
       ros2 run nav2_map_server map_server --ros-args -p yaml_filename:=/path/to/map.yaml
       ```
@@ -72,7 +75,7 @@ Params:
 - voxel_min_points: minimum points per voxel for downsampling inbound point clouds. Default: 1
 - tree: outbound binary .ot path. Default: "tree"
 
-To save the dense cloud once all your data has been published:
+To save the dense cloud from another terminal once all your data has been published:
 ```
 ros2 service call /dense_map_builder/save std_srvs/srv/Trigger
 ```
