@@ -65,7 +65,7 @@ Supported input formats: .pcd, .obj, .ot, .xyz
 Builds dense maps from timestamp-synchronized nav_msgs/msg/Odometry and sensor_msgs/msg/PointCloud2.
 
 ```
-ros2 run ros2_map_tools dense_map_builder
+ros2 run ros2_map_tools dense_map_builder --ros-args ...
 ```
 Params:
 - cloud_hz: optional cloud cache throttling frequency if > 0.0 . Default: -1.0
