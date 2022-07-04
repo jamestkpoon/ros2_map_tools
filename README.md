@@ -81,6 +81,11 @@ ros2 service call /dense_map_builder/save std_srvs/srv/Trigger
 ```
 Note: This will clear the message buffers, unless there are no point clouds available.
 
+An alternative trigger is publishing the optional path to a trajectory file after cloud accumulation:
+```
+ros2 topic pub /dense_map_builder/load_trajectory_and_save std_msgs/msg/String "data: /path/to/trajectory/file" --once
+```
+
 ## map_aligner_ui.py
 A "UI" to align >=2 2D maps together, to generate new map metadatas and a final combined map.
 Future work may be towards automating this, given the assumption of maps that fit together cleanly and are suitable for alignment via feature matching.

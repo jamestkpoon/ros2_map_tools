@@ -23,6 +23,7 @@ find_package(tf2_ros REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 
 find_package( PCL REQUIRED )
@@ -46,7 +47,7 @@ ament_target_dependencies(pcl_to_map rclcpp geometry_msgs sensor_msgs nav_msgs s
 
 add_executable(dense_map_builder src/dense_map_builder.cpp)
 target_link_libraries(dense_map_builder ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES})
-ament_target_dependencies(dense_map_builder rclcpp tf2_ros geometry_msgs sensor_msgs nav_msgs std_srvs)
+ament_target_dependencies(dense_map_builder rclcpp tf2_ros geometry_msgs sensor_msgs nav_msgs std_msgs std_srvs)
 
 install(TARGETS
   pcl_to_map dense_map_builder
