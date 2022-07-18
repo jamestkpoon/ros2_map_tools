@@ -93,3 +93,4 @@ Future work may be towards automating this, given the assumption of maps that fi
 ```
 ros2 run ros2_map_tools map_aligner_ui.py
 ```
+![aligner](https://user-images.githubusercontent.com/18109474/179490845-b8318271-aaec-4699-b30a-3466aa95243f.png)
