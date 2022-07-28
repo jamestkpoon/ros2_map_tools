@@ -14,7 +14,7 @@ colcon build --packages-select ros2_map_tools --cmake-args -DCMAKE_BUILD_TYPE=Re
 ## pcl_to_map
 Squashes 3D data files into 2D binary occupancy maps compatible with the [ROS2 map_server](https://index.ros.org/p/nav2_map_server).
 
-Supported input formats: .pcd, .obj, .ot, .xyz
+Supported input formats: .pcd, .ply, .obj, .ot, .xyz
 
 ### Params
 - file: input filepath
