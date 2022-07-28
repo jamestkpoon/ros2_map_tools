@@ -3,6 +3,7 @@
 #include <filesystem>
 
 #include <pcl/io/pcd_io.h>
+#include <pcl/io/ply_io.h>
 #include <pcl/io/obj_io.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/common/transforms.h>
@@ -177,6 +178,10 @@ private:
             if (cloud_in_ext_ == ".pcd")
             {
                 io::loadPCDFile<PointXYZ>(fp, *cloud_ptr_);
+            }
+            else if (cloud_in_ext_ == ".ply")
+            {
+                io::loadPLYFile<PointXYZ>(fp, *cloud_ptr_);
             }
             else if (cloud_in_ext_ == ".obj")
             {
