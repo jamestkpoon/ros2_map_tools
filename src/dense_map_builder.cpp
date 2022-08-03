@@ -2,14 +2,18 @@
 #include <fstream>
 
 #include <pcl/io/pcd_io.h>
+#include <pcl/io/ply_io.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/common/transforms.h>
+#include <pcl/kdtree/kdtree_flann.h>
 #include <octomap/octomap.h>
 #include <octomap/OcTree.h>
 
 #include <rclcpp/rclcpp.hpp>
 #include <tf2/buffer_core.h>
 #include <tf2_ros/buffer_interface.h>
+#include <tf2_eigen/tf2_eigen.h>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -24,10 +28,10 @@ using namespace pcl;
 #define TARGET_FRAME_OVERRIDE "target_frame"
 #define SOURCE_FRAME_OVERRIDE "source_frame"
 
-struct OctocloudStamped
+struct CloudPtrStamped
 {
     tf2::TimePoint stamp;
-    std::shared_ptr<octomap::Pointcloud> cloud;
+    PointCloud<PointXYZRGB>::Ptr cloud;
 };
 
 geometry_msgs::msg::TransformStamped from_tum(const std::string &line, const char sep = ' ')
@@ -58,15 +62,16 @@ public:
         poses_ = new std::vector<geometry_msgs::msg::TransformStamped>();
         load_trajectory(declare_parameter<std::string>("trajectory", ""));
 
-        clouds_ = new std::vector<OctocloudStamped>();
+        clouds_ = new std::vector<CloudPtrStamped>();
         cloud_throttle_period_ns_ = 1e9 / declare_parameter<double>("cloud_hz", -1.0);
 
-        voxelgrid_filter_ = new VoxelGrid<PointXYZ>();
+        voxelgrid_filter_ = new VoxelGrid<PointXYZRGB>();
         const float voxel_size = declare_parameter<double>("voxel_size", 0.05);
         voxelgrid_filter_->setLeafSize(voxel_size, voxel_size, voxel_size);
         voxelgrid_filter_->setMinimumPointsNumberPerVoxel(declare_parameter<int>("voxel_min_points", 1));
 
-        out_fp_ = declare_parameter<std::string>("tree", "tree") + ".ot";
+        prob_thresh_ = declare_parameter<double>("occupancy_likelihood_threshold", 0.5);
+        out_fp_ = declare_parameter<std::string>("out_path", "cloud") + ".ply";
 
         auto odom_topic = declare_parameter<std::string>("odom_topic", "");
         if (odom_topic != "")
@@ -83,7 +88,7 @@ public:
             "cloud", 10, std::bind(&DenseMapBuilder::cloud_callback, this, std::placeholders::_1));
 
         map_save_server_ = this->create_service<std_srvs::srv::Trigger>("~/save",
-            std::bind(&DenseMapBuilder::save_svc, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+                                                                        std::bind(&DenseMapBuilder::save_svc, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
         map_save_sub_ = this->create_subscription<std_msgs::msg::String>(
             "~/load_trajectory_and_save", 10, std::bind(&DenseMapBuilder::save_cb, this, std::placeholders::_1));
@@ -123,7 +128,7 @@ private:
 
     void cache_cloud(const sensor_msgs::msg::PointCloud2 &msg)
     {
-        OctocloudStamped cs;
+        CloudPtrStamped cs;
         cs.stamp = tf2_ros::fromMsg(msg.header.stamp);
 
         if (!odom_sub_ && !poses_->empty())
@@ -141,18 +146,12 @@ private:
         }
 
         // downsample
-        PointCloud<PointXYZ>::Ptr cloud(new PointCloud<PointXYZ>);
+        PointCloud<PointXYZRGB>::Ptr cloud(new PointCloud<PointXYZRGB>);
         fromROSMsg(msg, *cloud);
         voxelgrid_filter_->setInputCloud(cloud);
-        PointCloud<PointXYZ>::Ptr cloud_downsample(new PointCloud<PointXYZ>);
+        PointCloud<PointXYZRGB>::Ptr cloud_downsample(new PointCloud<PointXYZRGB>);
         voxelgrid_filter_->filter(*cloud_downsample);
-
-        // octotree pointcloud
-        cs.cloud = std::shared_ptr<octomap::Pointcloud>(new octomap::Pointcloud);
-        for (const auto &pt : *cloud_downsample)
-        {
-            cs.cloud->push_back(octomap::point3d(pt.x, pt.y, pt.z));
-        }
+        cs.cloud = cloud_downsample;
 
         clouds_->push_back(cs);
     }
@@ -186,6 +185,7 @@ private:
         // populate octomap tree
         RCLCPP_INFO(get_logger(), "Populating tree ...");
         octomap::OcTree tree(voxelgrid_filter_->getLeafSize().x());
+        PointCloud<PointXYZRGB>::Ptr cloud_agg(new PointCloud<PointXYZRGB>);
         int num_clouds = clouds_->size(), num_clouds_ok = 0, num_clouds_attempted = 0;
         for (const auto &cs : *clouds_)
         {
@@ -193,11 +193,28 @@ private:
             if (buffercore.canTransform(TARGET_FRAME_OVERRIDE, SOURCE_FRAME_OVERRIDE, cs.stamp))
             {
                 ++num_clouds_ok;
-                auto tf = buffercore.lookupTransform(TARGET_FRAME_OVERRIDE, SOURCE_FRAME_OVERRIDE, cs.stamp).transform;
-                octomap::pose6d pose(octomath::Vector3(tf.translation.x, tf.translation.y, tf.translation.z),
-                                     octomath::Quaternion(tf.rotation.w, tf.rotation.x, tf.rotation.y, tf.rotation.z));
 
-                tree.insertPointCloud(*cs.cloud, octomap::point3d(0, 0, 0), pose);
+                auto tf = buffercore.lookupTransform(TARGET_FRAME_OVERRIDE, SOURCE_FRAME_OVERRIDE, cs.stamp).transform;
+                geometry_msgs::msg::Pose pose;
+                pose.position.x = tf.translation.x;
+                pose.position.y = tf.translation.y;
+                pose.position.z = tf.translation.z;
+                pose.orientation.x = tf.rotation.x;
+                pose.orientation.y = tf.rotation.y;
+                pose.orientation.z = tf.rotation.z;
+                pose.orientation.w = tf.rotation.w;
+                Eigen::Affine3d aff;
+                tf2::fromMsg(pose, aff);
+
+                PointCloud<PointXYZRGB> cloud_transformed;
+                transformPointCloud(*cs.cloud, cloud_transformed, aff);
+                *cloud_agg += cloud_transformed;
+                octomap::Pointcloud octocloud;
+                for (const auto &pt : cloud_transformed)
+                {
+                    octocloud.push_back(octomap::point3d(pt.x, pt.y, pt.z));
+                }
+                tree.insertPointCloud(octocloud, octomap::point3d(0, 0, 0));
                 RCLCPP_INFO(get_logger(), (std::to_string(num_clouds_attempted) + " / " + std::to_string(num_clouds)).c_str());
 
                 if (!rclcpp::ok())
@@ -209,20 +226,44 @@ private:
             }
         }
         clouds_->clear();
-        RCLCPP_INFO(get_logger(), "Tree populated");
 
         // save
         if (tree.size() > 1)
         {
-            tree.writeBinary(out_fp_);
+            RCLCPP_INFO(get_logger(), "Assigning colors ...");
 
-            res->message = std::to_string(tree.getNumLeafNodes()) + " leaf nodes from " + std::to_string(num_clouds_ok) + "/" + std::to_string(num_clouds) + " clouds";
+            PointCloud<PointXYZRGB> leaves;
+            KdTreeFLANN<pcl::PointXYZRGB> kdtree;
+            kdtree.setInputCloud(cloud_agg);
+            float sqdl = voxelgrid_filter_->getLeafSize().x() * voxelgrid_filter_->getLeafSize().x();
+            for (auto it = tree.begin_leafs(), end = tree.end_leafs(); it != end; ++it)
+            {
+                if (it->getOccupancy() >= prob_thresh_)
+                {
+                    PointXYZRGB pt;
+                    pt.x = it.getX();
+                    pt.y = it.getY();
+                    pt.z = it.getZ();
+
+                    std::vector<int> pointIdxKNNSearch(1);
+                    std::vector<float> pointKNNSquaredDistance(1);
+                    if ((kdtree.nearestKSearch(pt, 1, pointIdxKNNSearch, pointKNNSquaredDistance) > 0) && (pointKNNSquaredDistance[0] <= sqdl))
+                    {
+                        leaves.push_back((*cloud_agg)[pointIdxKNNSearch[0]]);
+                    }
+                }
+            }
+
+            io::savePLYFileBinary(out_fp_, leaves);
+            res->message = std::to_string(leaves.size()) + " points from " + std::to_string(num_clouds_ok) + "/" + std::to_string(num_clouds) + " clouds";
             res->success = true;
+            RCLCPP_INFO(get_logger(), res->message.c_str());
         }
         else
         {
             res->message = "No clouds utilized";
             res->success = false;
+            RCLCPP_ERROR(get_logger(), res->message.c_str());
         }
     }
 
@@ -276,9 +317,10 @@ private:
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_save_sub_;
 
     std::vector<geometry_msgs::msg::TransformStamped> *poses_;
-    std::vector<OctocloudStamped> *clouds_;
+    std::vector<CloudPtrStamped> *clouds_;
     int64_t cloud_throttle_period_ns_;
-    VoxelGrid<PointXYZ> *voxelgrid_filter_;
+    VoxelGrid<PointXYZRGB> *voxelgrid_filter_;
+    double prob_thresh_;
     std::string out_fp_;
 };
 
