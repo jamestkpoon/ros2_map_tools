@@ -87,8 +87,9 @@ public:
         cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
             "cloud", 10, std::bind(&DenseMapBuilder::cloud_callback, this, std::placeholders::_1));
 
-        map_save_server_ = this->create_service<std_srvs::srv::Trigger>("~/save",
-                                                                        std::bind(&DenseMapBuilder::save_svc, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+        map_save_server_ = this->create_service<std_srvs::srv::Trigger>(
+            "~/save",
+            std::bind(&DenseMapBuilder::save_svc, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
         map_save_sub_ = this->create_subscription<std_msgs::msg::String>(
             "~/load_trajectory_and_save", 10, std::bind(&DenseMapBuilder::save_cb, this, std::placeholders::_1));
