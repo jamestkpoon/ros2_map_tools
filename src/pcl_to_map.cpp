@@ -68,8 +68,9 @@ public:
         cloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>("~/cloud", pub_qos);
         og_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>("~/map", pub_qos);
 
-        map_save_server_ = create_service<std_srvs::srv::Trigger>("~/save",
-                                                                  std::bind(&PclToMap::save_svc, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+        map_save_server_ = create_service<std_srvs::srv::Trigger>(
+            "~/save",
+            std::bind(&PclToMap::save_svc, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
         og_msg_ptr_ = new nav_msgs::msg::OccupancyGrid();
         og_msg_ptr_->header.frame_id = "map";
