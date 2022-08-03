@@ -73,7 +73,8 @@ Params:
 - odom_topic: optional odometry topic. If omitted, incoming cloud msgs with stamps beyond the range in the trajectory file will be rejected
 - voxel_size: voxel grid size. Default: 0.05
 - voxel_min_points: minimum points per voxel for downsampling inbound point clouds. Default: 1
-- tree: outbound binary .ot path. Default: "tree"
+- occupancy_likelihood_threshold: probability threshold for occupancy. Default: 0.5
+- out_path: outbound binary .ply path. Default: "cloud"
 
 To save the dense cloud from another terminal once all your data has been published:
 ```
