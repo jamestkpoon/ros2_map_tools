@@ -252,6 +252,7 @@ def main(_=None):
     user_input = _get_valid_filepath("Target .yaml: ")
     target = Map(user_input)
     target_blpp = target.unrotated_bl_px_pose()
+    target_blpp_px_offset = (0, 0)
 
     # drawing colors
     free_color = target.free_color()
@@ -359,6 +360,10 @@ def main(_=None):
             )
             conn_a.send(cmn_with_source_border)
 
+            # adjust target co-ordinate
+            target_blpp[0][:] -= np.asarray(cm_br[:2]) - target_blpp_px_offset
+            target_blpp_px_offset = (cm_br[0], cm_br[1])
+
             # handle user input
             user_input = input(
                 "  Enter adjust command or "
@@ -369,7 +374,6 @@ def main(_=None):
                 combined_map_new[combined_map_new == occ_thresh_color] = occ_color
                 combined_map = combined_map_new
 
-                target_blpp[0][:] -= cm_br[:2]
                 source_blpp_tf_px = (
                     source_blpp[0]
                     + source.transform_bl_px_pose(rotm, yaw)[0]
@@ -378,7 +382,6 @@ def main(_=None):
                 source_blpp[1][:2] = _transform_px_to_pos(
                     target_blpp, source_blpp_tf_px, target.res
                 )
-                target_blpp[0][:] += cm_br[:2]
                 source_fp = source.write(source_blpp[1])
                 print("Saved " + source_fp)
 
