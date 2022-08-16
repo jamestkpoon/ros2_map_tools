@@ -378,6 +378,7 @@ def main(_=None):
                 source_blpp[1][:2] = _transform_px_to_pos(
                     target_blpp, source_blpp_tf_px, target.res
                 )
+                target_blpp[0][:] += cm_br[:2]
                 source_fp = source.write(source_blpp[1])
                 print("Saved " + source_fp)
 
